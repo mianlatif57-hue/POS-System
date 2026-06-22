@@ -35,8 +35,8 @@ from contextlib import contextmanager
 
 CONNECTION_STRING = (
     "DRIVER={ODBC Driver 17 for SQL Server};"
-    "SERVER=" + os.getenv("DB_SERVER", r"localhost\SQLEXPRESS") + ";"
-    "DATABASE=" + os.getenv("DB_NAME", "TechShopPOS") + ";"
+    "SERVER=DESKTOP-LD2JK4A;"  # Double-check if you need \SQLEXPRESS at the end
+    "DATABASE=TechShopPOS;"  # Change to your actual DB name
     "Trusted_Connection=yes;"
 )
 

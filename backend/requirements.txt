@@ -1,0 +1,13 @@
+# Install all of these with: pip install -r requirements.txt
+#
+# fastapi      — the web framework
+# uvicorn      — the ASGI server that runs FastAPI
+# pyodbc       — Python → SQL Server bridge (needs ODBC Driver 17)
+# python-dotenv — loads .env file into os.getenv()
+# pydantic     — data validation (comes with FastAPI but listed for clarity)
+
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+pyodbc==5.1.0
+python-dotenv==1.0.1
+pydantic==2.7.1

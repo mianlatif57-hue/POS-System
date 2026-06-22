@@ -1,0 +1,305 @@
+# ============================================================
+#  main.py — FastAPI Application (Backend Entry Point)
+# ============================================================
+# LEARNING NOTE:
+# FastAPI is a modern Python web framework. It:
+#  - Receives HTTP requests from your React frontend
+#  - Validates request data using Pydantic schemas
+#  - Calls stored procedures in SQL Server
+#  - Returns JSON responses
+#
+# Think of it as the "waiter" between the frontend (customer)
+# and the database (kitchen). It takes orders, validates them,
+# passes them to the kitchen, and brings back the result.
+#
+# To run this file:
+#   uvicorn main:app --reload --port 8000
+#
+# "main" = the filename (main.py)
+# "app"  = the FastAPI() instance below
+# "--reload" = restart automatically when you save changes (dev only)
+#
+# Your API docs are auto-generated at: http://localhost:8000/docs
+# ============================================================
+
+import json
+from decimal import Decimal
+from fastapi import FastAPI, HTTPException, Depends
+from fastapi.middleware.cors import CORSMiddleware
+
+from database import get_db, call_procedure, rows_to_dicts
+from schema import (
+    CreateSaleSchema, InventoryAdjustSchema,
+    ProductListItemSchema, InventoryProductSchema,
+    InvoiceFullSchema, SaleCreatedSchema, ProductDetailSchema
+)
+
+# ============================================================
+# APP INSTANCE
+# ============================================================
+# FastAPI() creates your application object. All routes are
+# registered on this object using decorators like @app.get()
+# ============================================================
+app = FastAPI(
+    title="Tech Shop POS API",
+    description="Point of Sale backend for TechShopPOS",
+    version="1.0.0"
+)
+
+# ============================================================
+# CORS MIDDLEWARE
+# ============================================================
+# LEARNING NOTE — What is CORS?
+# CORS = Cross-Origin Resource Sharing.
+# Browsers have a security rule: JavaScript from one domain
+# cannot talk to an API on a different domain UNLESS the API
+# explicitly allows it.
+#
+# Your React app runs at: http://localhost:5173  (Vite dev server)
+# Your FastAPI runs at:   http://localhost:8000
+#
+# These are different "origins" (different ports = different origin).
+# Without this middleware, the browser would BLOCK all requests
+# from React to FastAPI with a CORS error.
+#
+# allow_origins=["http://localhost:5173"] means:
+# "I allow requests from this specific origin."
+#
+# In production, change this to your actual frontend domain.
+# NEVER use allow_origins=["*"] in production — that allows
+# ANY website to call your API, which is a security risk.
+# ============================================================
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],      # allow GET, POST, PUT, DELETE, etc.
+    allow_headers=["*"],      # allow any HTTP headers
+)
+
+
+# ============================================================
+# HELPER: Convert Decimal to float for JSON
+# ============================================================
+# LEARNING NOTE:
+# Python's Decimal type and JavaScript's JSON don't mix well.
+# We convert all Decimal values to float before sending.
+# ============================================================
+def decimal_to_float(obj):
+    if isinstance(obj, Decimal):
+        return float(obj)
+    raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+
+
+# ============================================================
+# ROUTE 1: GET /products
+# ============================================================
+# LEARNING NOTE — HTTP Methods:
+#   GET    = read/fetch data (no body)
+#   POST   = create new data (has a body)
+#   PUT    = update existing data (has a body)
+#   DELETE = delete data
+#
+# @app.get("/products") means:
+# "When the frontend sends a GET request to /products, run this function."
+#
+# response_model tells FastAPI to validate the output against
+# our Pydantic schema and show it in the /docs page.
+# ============================================================
+
+@app.get("/products", response_model=list[ProductListItemSchema])
+def get_all_products():
+    """
+    Returns all in-stock products for the POS/transaction screen.
+    Calls stored procedure: usp_GetAllProducts
+    """
+    with get_db() as conn:
+        cursor = conn.cursor()
+        call_procedure(cursor, "usp_GetAllProducts")
+        products = rows_to_dicts(cursor)
+    return products
+
+
+# ============================================================
+# ROUTE 2: POST /sales
+# ============================================================
+# This is the most important route — it creates a complete sale.
+#
+# LEARNING NOTE — Request Body:
+# When the frontend POSTs to /sales, it sends JSON like:
+# {
+#   "empID": 1,
+#   "cart": [
+#     {"prodID": 1, "qty": 2, "unitPrice": 62000},
+#     {"prodID": 3, "qty": 1, "unitPrice": 11000}
+#   ]
+# }
+# FastAPI reads the body and validates it against CreateSaleSchema.
+# If empID is missing or cart is empty, it returns a 422 error
+# automatically — before our code even runs.
+# ============================================================
+
+@app.post("/sales", response_model=SaleCreatedSchema, status_code=201)
+def create_sale(sale: CreateSaleSchema):
+    """
+    Creates a complete sale transaction.
+    Calls stored procedure: usp_CreateSale
+
+    The cart is serialized to JSON and passed to the SP.
+    SQL Server's OPENJSON() parses it back into rows.
+    """
+    # Convert cart items to JSON string for the stored procedure
+    # LEARNING NOTE on custom=decimal_to_float:
+    # json.dumps needs to know how to serialize Decimal objects.
+    cart_data = [
+        {
+            "prodID":    item.prodID,
+            "qty":       item.qty,
+            "unitPrice": float(item.unitPrice)
+        }
+        for item in sale.cart
+    ]
+    cart_json = json.dumps(cart_data)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        call_procedure(cursor, "usp_CreateSale", (sale.empID, cart_json))
+        result = rows_to_dicts(cursor)
+
+    if not result:
+        raise HTTPException(status_code=500, detail="Sale creation failed")
+
+    return result[0]   # {"invoiceID": 7, "totalAmount": 135000.00}
+
+
+# ============================================================
+# ROUTE 3: GET /invoices/{invoice_id}
+# ============================================================
+# LEARNING NOTE — Path Parameters:
+# The {invoice_id} in the URL is a path parameter.
+# If you request GET /invoices/5, then invoice_id = 5.
+# FastAPI automatically extracts it and passes it to the function.
+#
+# This route returns TWO result sets from the stored procedure
+# (header + line items). We use cursor.nextset() to move between
+# result sets — this is specific to pyodbc's multi-result handling.
+# ============================================================
+
+@app.get("/invoices/{invoice_id}", response_model=InvoiceFullSchema)
+def get_invoice(invoice_id: int):
+    """
+    Returns a complete invoice with header and line items.
+    Calls stored procedure: usp_GetInvoice
+
+    Used for printing invoices after a sale, or looking up past sales.
+    """
+    with get_db() as conn:
+        cursor = conn.cursor()
+        call_procedure(cursor, "usp_GetInvoice", (invoice_id,))
+
+        # First result set: invoice header
+        headers = rows_to_dicts(cursor)
+        if not headers:
+            raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
+
+        # Move to second result set: line items
+        # cursor.nextset() returns True if another result set exists
+        cursor.nextset()
+        lines = rows_to_dicts(cursor)
+
+    return {
+        "header": headers[0],
+        "lines":  lines
+    }
+
+
+# ============================================================
+# ROUTE 4: GET /inventory
+# ============================================================
+
+@app.get("/inventory", response_model=list[InventoryProductSchema])
+def get_inventory():
+    """
+    Returns all products with cost, sale price, and margin %.
+    Calls stored procedure: usp_GetInventory
+
+    Used by the Inventory page to show the complete product list.
+    """
+    with get_db() as conn:
+        cursor = conn.cursor()
+        call_procedure(cursor, "usp_GetInventory")
+        products = rows_to_dicts(cursor)
+    return products
+
+
+# ============================================================
+# ROUTE 5: GET /inventory/{prod_id}
+# ============================================================
+
+@app.get("/inventory/{prod_id}", response_model=ProductDetailSchema)
+def get_product_detail(prod_id: int):
+    """
+    Returns full detail for one product + its adjustment history.
+    Calls stored procedure: usp_GetProductDetail
+
+    Triggered when user clicks a product in the Inventory page.
+    Returns TWO result sets (product info + history log).
+    """
+    with get_db() as conn:
+        cursor = conn.cursor()
+        call_procedure(cursor, "usp_GetProductDetail", (prod_id,))
+
+        # First result set: product info
+        products = rows_to_dicts(cursor)
+        if not products:
+            raise HTTPException(status_code=404, detail=f"Product {prod_id} not found")
+
+        # Second result set: inventory history
+        cursor.nextset()
+        history = rows_to_dicts(cursor)
+
+    product = products[0]
+    product["history"] = history
+    return product
+
+
+# ============================================================
+# ROUTE 6: POST /inventory/adjust
+# ============================================================
+
+@app.post("/inventory/adjust", status_code=200)
+def adjust_inventory(data: InventoryAdjustSchema):
+    """
+    Manually adjusts stock (positive = add, negative = remove).
+    Calls stored procedure: usp_AdjustInventory
+
+    Used by staff to record restocking or manual corrections.
+    """
+    with get_db() as conn:
+        cursor = conn.cursor()
+        call_procedure(
+            cursor,
+            "usp_AdjustInventory",
+            (data.prodID, data.empID, data.adjustedQty, data.reason)
+        )
+        result = rows_to_dicts(cursor)
+
+    if not result:
+        raise HTTPException(status_code=500, detail="Adjustment failed")
+
+    return {
+        "prodID": data.prodID,
+        "newStockQuantity": result[0]["stockQuantity"]
+    }
+
+
+# ============================================================
+# ROUTE 7: GET / — Health check
+# ============================================================
+# A simple route to verify the API is running.
+# Useful for deployment health checks.
+# ============================================================
+
+@app.get("/")
+def root():
+    return {"status": "TechShop POS API is running", "docs": "/docs"}
