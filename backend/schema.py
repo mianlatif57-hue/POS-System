@@ -124,6 +124,8 @@ class InvoiceHeaderSchema(BaseModel):
 
 class InvoiceLineSchema(BaseModel):
     """One line item on an invoice."""
+    saleID:       Optional[int] = None
+    prodID:       Optional[int] = None
     prodName:     str
     quantitySold: int
     unitPrice:    Decimal
@@ -174,3 +176,45 @@ class ProductDetailSchema(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ============================================================
+# EMPLOYEE SCHEMA
+# ============================================================
+
+class EmployeeSchema(BaseModel):
+    """Employee/cashier information."""
+    empID:   int
+    empName: str
+
+    class Config:
+        from_attributes = True
+
+
+# ============================================================
+# RETURN/EXCHANGE SCHEMA
+# ============================================================
+
+class ReturnItemSchema(BaseModel):
+    """One product line to return (partial return)."""
+    prodID: int = Field(..., gt=0)
+    qty:    int = Field(..., gt=0, description="Quantity to return (must not exceed quantity sold)")
+
+
+class ReturnSaleSchema(BaseModel):
+    """Request to return/exchange a sale (refund items to inventory)."""
+    reason: Optional[str] = Field(None, max_length=500, description="Reason for return")
+    items:  Optional[list[ReturnItemSchema]] = Field(
+        None,
+        min_length=1,
+        description="Specific products to return. Omit to return the entire invoice.",
+    )
+
+
+class ReturnSaleResultSchema(BaseModel):
+    """Response after successfully returning a sale."""
+    invoiceID:     int
+    message:       str
+    itemsReturned: int
+    unitsReturned: Optional[int] = None
+

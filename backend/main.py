@@ -29,9 +29,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from database import get_db, call_procedure, rows_to_dicts
 from schema import (
-    CreateSaleSchema, InventoryAdjustSchema,
-    ProductListItemSchema, InventoryProductSchema,
-    InvoiceFullSchema, SaleCreatedSchema, ProductDetailSchema
+    CreateSaleSchema, InventoryAdjustSchema, ReturnSaleSchema,
+    ProductListItemSchema, InventoryProductSchema, EmployeeSchema,
+    InvoiceHeaderSchema, InvoiceFullSchema, SaleCreatedSchema, ProductDetailSchema, ReturnSaleResultSchema
 )
 
 # ============================================================
@@ -118,6 +118,28 @@ def get_all_products():
         call_procedure(cursor, "usp_GetAllProducts")
         products = rows_to_dicts(cursor)
     return products
+
+
+# ============================================================
+# ROUTE 1B: GET /employees
+# ============================================================
+# LEARNING NOTE:
+# This endpoint returns all employees/cashiers in the system.
+# Used by the Transaction page to let users select who is making the sale.
+# Calls stored procedure: usp_GetAllEmployees
+# ============================================================
+
+@app.get("/employees", response_model=list[EmployeeSchema])
+def get_all_employees():
+    """
+    Returns all employees/cashiers available for making sales.
+    Returns: [{empID, empName}, ...]
+    """
+    with get_db() as conn:
+        cursor = conn.cursor()
+        call_procedure(cursor, "usp_GetAllEmployees")
+        employees = rows_to_dicts(cursor)
+    return employees
 
 
 # ============================================================
@@ -294,7 +316,114 @@ def adjust_inventory(data: InventoryAdjustSchema):
 
 
 # ============================================================
-# ROUTE 7: GET / — Health check
+# ROUTE 7: GET /sales
+# ============================================================
+# LEARNING NOTE:
+# This endpoint returns a list of all invoices/sales ever recorded.
+# Each invoice shows header info (ID, date, total, employee).
+# Calls stored procedure: usp_GetSalesHistory
+# ============================================================
+
+@app.get("/sales", response_model=list[InvoiceHeaderSchema])
+def get_all_sales():
+    """
+    Returns all invoices/sales ever recorded.
+    Returns: [{invoiceID, invoiceDateTime, totalAmount, empName}, ...]
+    """
+    with get_db() as conn:
+        cursor = conn.cursor()
+        call_procedure(cursor, "usp_GetSalesHistory")
+        invoices = rows_to_dicts(cursor)
+    return invoices
+
+
+# ============================================================
+# ROUTE 8: GET /sales/{invoice_id}
+# ============================================================
+# LEARNING NOTE:
+# Returns all line items (products) for a single invoice.
+# This is the detail view when user clicks an invoice to expand it.
+# Calls stored procedure: usp_GetInvoice (same as /invoices/{id})
+# Returns the complete invoice (header + lines in two result sets).
+# ============================================================
+
+@app.get("/sales/{invoice_id}", response_model=InvoiceFullSchema)
+def get_sales_detail(invoice_id: int):
+    """
+    Returns complete invoice details (header + line items).
+    Used for expanding an invoice row to see all products.
+    """
+    with get_db() as conn:
+        cursor = conn.cursor()
+        call_procedure(cursor, "usp_GetInvoice", (invoice_id,))
+
+        # First result set: invoice header
+        headers = rows_to_dicts(cursor)
+        if not headers:
+            raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
+
+        # Move to second result set: line items
+        cursor.nextset()
+        lines = rows_to_dicts(cursor)
+
+    return {
+        "header": headers[0],
+        "lines":  lines
+    }
+
+
+# ============================================================
+# ROUTE 8B: POST /sales/{invoice_id}/return
+# ============================================================
+# LEARNING NOTE:
+# This endpoint handles returns/exchanges of items.
+# When a customer returns a product:
+#  1. All items from the original invoice are returned to inventory
+#  2. The invoice is marked as "returned"
+#  3. A reason is recorded (damage, customer request, etc.)
+# Calls stored procedure: usp_ReturnSale
+# ============================================================
+
+@app.post("/sales/{invoice_id}/return", response_model=ReturnSaleResultSchema, status_code=200)
+def return_sale(invoice_id: int, data: ReturnSaleSchema):
+    """
+    Process a return/exchange: add items back to inventory.
+    Pass `items` for a partial return, or omit `items` to return the whole invoice.
+    Calls stored procedure: usp_ReturnSale
+    """
+    items_json = None
+    if data.items:
+        items_json = json.dumps([{"prodID": item.prodID, "qty": item.qty} for item in data.items])
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        call_procedure(
+            cursor,
+            "usp_ReturnSale",
+            (invoice_id, data.reason, items_json),
+        )
+        result = rows_to_dicts(cursor)
+
+    if not result:
+        raise HTTPException(status_code=500, detail="Return processing failed")
+
+    row = result[0]
+    units = row.get("unitsReturned", row.get("itemsReturned", 0))
+    if data.items:
+        message = f"Returned {units} unit(s) from invoice {invoice_id}"
+    else:
+        message = f"Invoice {invoice_id} fully returned"
+
+    return {
+        "invoiceID": invoice_id,
+        "message": message,
+        "itemsReturned": row.get("itemsReturned", 0),
+        "unitsReturned": units,
+    }
+
+
+# ============================================================
+# ROUTE 9: GET / — Health check
 # ============================================================
 # A simple route to verify the API is running.
 # Useful for deployment health checks.
