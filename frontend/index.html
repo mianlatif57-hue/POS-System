@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TechShop POS</title>
+    <!--
+      LEARNING NOTE — What is this file?
+      ====================================
+      You were MOSTLY right: this is NOT the "home page" in the sense
+      that users see it fully rendered. It's a shell — a template.
+
+      The critical part is: <div id="root"></div>
+      React finds that div and INJECTS all its components into it.
+      After React loads, the entire UI you see is React-rendered HTML
+      that was dynamically inserted into that single empty div.
+
+      You almost never edit this file after initial setup.
+      The real "home page" from a user's perspective is Dashboard.jsx
+      (or whatever component your router shows at the "/" path).
+
+      The <script type="module" src="/src/main.jsx"> line tells the
+      browser to load main.jsx as the JavaScript entry point.
+      Vite processes this and bundles all your React code.
+    -->
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html> 
