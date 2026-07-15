@@ -20,7 +20,7 @@
 // ============================================================
 
 import { useState, useEffect } from 'react';
-import { fetchInventory } from '../api.js';
+import { fetchInventory, createProduct } from '../api.js';
 
 
 // ============================================================
@@ -127,6 +127,14 @@ function ProductCard({ product }) {
           {margin}%
         </span>
       </div>
+
+      {product.prodDescription && (
+        <p className="text-muted text-sm" style={{ marginTop: 4, lineHeight: 1.4 }}>
+          {product.prodDescription.length > 80
+            ? `${product.prodDescription.slice(0, 80)}...`
+            : product.prodDescription}
+        </p>
+      )}
     </div>
   );
 }
@@ -140,21 +148,93 @@ export default function Products() {
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState('');
   const [search,   setSearch]   = useState('');
-  const [filter,   setFilter]   = useState('all'); // 'all' | 'instock' | 'outofstock'
+  const [filter,   setFilter]   = useState('all');
+  const [showForm, setShowForm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [formMessage, setFormMessage] = useState('');
+  const [form, setForm] = useState({
+    prodName: '',
+    prodDescription: '',
+    prodImage: '',
+    costPrice: '',
+    salePrice: '',
+    stockQuantity: '0',
+  });
+  const [imagePreview, setImagePreview] = useState('');
+
+  const loadProducts = async () => {
+    try {
+      const data = await fetchInventory();
+      setProducts(data);
+    } catch {
+      setError('Failed to load products.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    async function load() {
-      try {
-        const data = await fetchInventory();
-        setProducts(data);
-      } catch (err) {
-        setError('Failed to load products.');
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
+    loadProducts();
   }, []);
+
+  const handleImageFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      setForm((prev) => ({ ...prev, prodImage: dataUrl }));
+      setImagePreview(dataUrl);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const resetForm = () => {
+    setForm({
+      prodName: '',
+      prodDescription: '',
+      prodImage: '',
+      costPrice: '',
+      salePrice: '',
+      stockQuantity: '0',
+    });
+    setImagePreview('');
+    setShowForm(false);
+    setFormMessage('');
+  };
+
+  const handleCreateProduct = async (e) => {
+    e.preventDefault();
+    if (!form.prodName.trim()) {
+      setFormMessage('Product name is required.');
+      return;
+    }
+    if (!form.costPrice || !form.salePrice) {
+      setFormMessage('Cost and sale price are required.');
+      return;
+    }
+
+    setSubmitting(true);
+    setFormMessage('');
+    try {
+      await createProduct({
+        prodName: form.prodName.trim(),
+        prodDescription: form.prodDescription.trim() || null,
+        prodImage: form.prodImage || null,
+        costPrice: parseFloat(form.costPrice),
+        salePrice: parseFloat(form.salePrice),
+        stockQuantity: parseInt(form.stockQuantity, 10) || 0,
+      });
+      resetForm();
+      setLoading(true);
+      await loadProducts();
+      setFormMessage('');
+    } catch (err) {
+      setFormMessage(err.friendlyMessage || 'Failed to create product.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   // ============================================================
   // FILTERING
@@ -176,12 +256,123 @@ export default function Products() {
 
   return (
     <div>
-      <div className="page-header">
-        <h1 className="page-title">Products</h1>
-        <p className="page-subtitle">
-          Full product catalogue — {products.length} products total
-        </p>
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <h1 className="page-title">Products</h1>
+          <p className="page-subtitle">
+            Full product catalogue — {products.length} products total
+          </p>
+        </div>
+        <button className="btn btn-primary" onClick={() => { resetForm(); setShowForm(true); }}>
+          + Add Product
+        </button>
       </div>
+
+      {showForm && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <h2 style={{ marginBottom: 16, fontSize: '1rem', fontWeight: 700 }}>Add New Product</h2>
+          <form onSubmit={handleCreateProduct}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+              <div>
+                <label className="text-sm text-muted">Product Name *</label>
+                <input
+                  className="input"
+                  value={form.prodName}
+                  onChange={(e) => setForm({ ...form, prodName: e.target.value })}
+                  style={{ width: '100%' }}
+                />
+              </div>
+              <div>
+                <label className="text-sm text-muted">Image URL (or upload below)</label>
+                <input
+                  className="input"
+                  value={form.prodImage.startsWith('data:') ? '' : form.prodImage}
+                  onChange={(e) => {
+                    setForm({ ...form, prodImage: e.target.value });
+                    setImagePreview(e.target.value);
+                  }}
+                  placeholder="https://..."
+                  style={{ width: '100%' }}
+                />
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 12 }}>
+              <label className="text-sm text-muted">Description</label>
+              <textarea
+                className="input"
+                value={form.prodDescription}
+                onChange={(e) => setForm({ ...form, prodDescription: e.target.value })}
+                rows={3}
+                style={{ width: '100%', fontFamily: 'inherit', resize: 'vertical' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: 16, marginBottom: 12, alignItems: 'flex-start' }}>
+              <div>
+                <label className="text-sm text-muted">Upload Image</label>
+                <input type="file" accept="image/*" onChange={handleImageFile} />
+              </div>
+              {(imagePreview || form.prodImage) && (
+                <img
+                  src={imagePreview || form.prodImage}
+                  alt="Preview"
+                  style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 8 }}
+                />
+              )}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
+              <div>
+                <label className="text-sm text-muted">Cost Price (Rs.) *</label>
+                <input
+                  className="input"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.costPrice}
+                  onChange={(e) => setForm({ ...form, costPrice: e.target.value })}
+                  style={{ width: '100%' }}
+                />
+              </div>
+              <div>
+                <label className="text-sm text-muted">Sale Price (Rs.) *</label>
+                <input
+                  className="input"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.salePrice}
+                  onChange={(e) => setForm({ ...form, salePrice: e.target.value })}
+                  style={{ width: '100%' }}
+                />
+              </div>
+              <div>
+                <label className="text-sm text-muted">Initial Stock</label>
+                <input
+                  className="input"
+                  type="number"
+                  min="0"
+                  value={form.stockQuantity}
+                  onChange={(e) => setForm({ ...form, stockQuantity: e.target.value })}
+                  style={{ width: '100%' }}
+                />
+              </div>
+            </div>
+
+            {formMessage && (
+              <p style={{ color: 'var(--color-danger)', marginBottom: 12 }}>{formMessage}</p>
+            )}
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="submit" className="btn btn-primary" disabled={submitting}>
+                {submitting ? 'Adding...' : 'Add Product'}
+              </button>
+              <button type="button" className="btn btn-ghost" onClick={resetForm}>Cancel</button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* Controls row */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>

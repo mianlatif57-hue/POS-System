@@ -24,6 +24,10 @@ import Transaction  from './pages/Transaction.jsx';
 import Inventory    from './pages/Inventory.jsx';
 import Products     from './pages/Products.jsx';
 import SalesHistory from './pages/SalesHistory.jsx';
+import SalesReturn  from './pages/SalesReturn.jsx';
+import Suppliers    from './pages/Suppliers.jsx';
+import SalesPerson  from './pages/SalesPerson.jsx';
+import GRN          from './pages/GRN.jsx';
 
 // ============================================================
 // SIDEBAR COMPONENT
@@ -53,11 +57,21 @@ function Sidebar() {
         <NavLink to="/sales"       className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
           Sales History
         </NavLink>
+        {/* SalesReturn is not on the sidebar — it opens via the Return button on Sales History page */}
         <NavLink to="/inventory"   className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
           Inventory
         </NavLink>
         <NavLink to="/products"    className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
           Products
+        </NavLink>
+        <NavLink to="/suppliers"   className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
+          Suppliers
+        </NavLink>
+        <NavLink to="/sales-persons" className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
+          Sales Persons
+        </NavLink>
+        <NavLink to="/grn"         className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
+          GRN
         </NavLink>
       </nav>
     </aside>
@@ -86,8 +100,13 @@ export default function App() {
             <Route path="/"            element={<Dashboard />} />
             <Route path="/transaction" element={<Transaction />} />
             <Route path="/sales"       element={<SalesHistory />} />
+            <Route path="/sales/return" element={<SalesReturn />} />
+            <Route path="/sales/return/:invoiceId" element={<SalesReturn />} />
             <Route path="/inventory"   element={<Inventory />} />
             <Route path="/products"    element={<Products />} />
+            <Route path="/suppliers"  element={<Suppliers />} />
+            <Route path="/sales-persons" element={<SalesPerson />} />
+            <Route path="/grn"        element={<GRN />} />
             {/* Catch-all: unknown URLs redirect to home */}
             <Route path="*"            element={<Navigate to="/" replace />} />
           </Routes>

@@ -82,9 +82,11 @@ export default function Dashboard() {
           onMouseOver={(e) => (e.target.style.transform = 'translateY(-2px)')}
           onMouseOut={(e) => (e.target.style.transform = 'translateY(0)')}
         >
-          📋 View Sales History
+          View Sales History
         </button>
       </div>
+
+      
 
       {/* Stat Cards */}
       <div className="stat-grid">
@@ -116,7 +118,7 @@ export default function Dashboard() {
       {lowStockItems.length > 0 && (
         <div className="card" style={{ marginBottom: 20 }}>
           <h2 style={{ marginBottom: 12, fontSize: '1rem', fontWeight: 700 }}>
-            ⚠️ Low Stock Alerts
+            Low Stock Alerts
           </h2>
           <div className="table-wrapper">
             <table>
@@ -147,7 +149,7 @@ export default function Dashboard() {
       {outOfStockItems.length > 0 && (
         <div className="card">
           <h2 style={{ marginBottom: 12, fontSize: '1rem', fontWeight: 700 }}>
-            🚫 Out of Stock
+             Out of Stock
           </h2>
           <div className="table-wrapper">
             <table>

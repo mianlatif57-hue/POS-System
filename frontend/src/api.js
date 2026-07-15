@@ -234,3 +234,74 @@ export async function returnSale(invoiceID, reason, items = null) {
   const response = await api.post(`/sales/${invoiceID}/return`, body);
   return response.data;
 }
+
+
+// ------ PRODUCTS (CREATE) ------
+
+/**
+ * Create a new product.
+ * Calls: POST /products
+ */
+export async function createProduct(product) {
+  const response = await api.post('/products', product);
+  return response.data;
+}
+
+
+// ------ SUPPLIERS ------
+
+export async function fetchSuppliers() {
+  const response = await api.get('/suppliers');
+  return response.data;
+}
+
+export async function createSupplier(supplier) {
+  const response = await api.post('/suppliers', supplier);
+  return response.data;
+}
+
+export async function updateSupplier(supplierID, supplier) {
+  const response = await api.put(`/suppliers/${supplierID}`, supplier);
+  return response.data;
+}
+
+export async function deleteSupplier(supplierID) {
+  const response = await api.delete(`/suppliers/${supplierID}`);
+  return response.data;
+}
+
+
+// ------ SALES PERSONS ------
+
+export async function fetchSalesPersons() {
+  const response = await api.get('/sales-persons');
+  return response.data;
+}
+
+export async function createSalesPerson(person) {
+  const response = await api.post('/sales-persons', person);
+  return response.data;
+}
+
+export async function deleteSalesPerson(empID) {
+  const response = await api.delete(`/sales-persons/${empID}`);
+  return response.data;
+}
+
+
+// ------ GRN (Goods Receipt Notes) ------
+
+export async function fetchGRNs() {
+  const response = await api.get('/grn');
+  return response.data;
+}
+
+export async function fetchGRNDetail(grnID) {
+  const response = await api.get(`/grn/${grnID}`);
+  return response.data;
+}
+
+export async function createGRN(grn) {
+  const response = await api.post('/grn', grn);
+  return response.data;
+}

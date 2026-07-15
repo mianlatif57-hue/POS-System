@@ -23,15 +23,25 @@
 # ============================================================
 
 import json
+import os
 from decimal import Decimal
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
-from database import get_db, call_procedure, rows_to_dicts
+# Use a mock backend when developing without a configured SQL Server.
+USE_MOCK = os.getenv("USE_MOCK", "0") == "1"
+if USE_MOCK:
+    from mock_data import get_db, call_procedure, rows_to_dicts
+else:
+    from database import get_db, call_procedure, rows_to_dicts
 from schema import (
     CreateSaleSchema, InventoryAdjustSchema, ReturnSaleSchema,
     ProductListItemSchema, InventoryProductSchema, EmployeeSchema,
-    InvoiceHeaderSchema, InvoiceFullSchema, SaleCreatedSchema, ProductDetailSchema, ReturnSaleResultSchema
+    InvoiceHeaderSchema, InvoiceFullSchema, SaleCreatedSchema, ProductDetailSchema, ReturnSaleResultSchema,
+    CreateProductSchema, CreateProductResultSchema,
+    SupplierSchema, CreateSupplierSchema, UpdateSupplierSchema,
+    SalesPersonSchema, CreateSalesPersonSchema,
+    CreateGRNSchema, GRNListItemSchema, GRNDetailSchema,
 )
 
 # ============================================================
@@ -71,7 +81,7 @@ app = FastAPI(
 # ============================================================
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["*"],  # Allow all origins for development
     allow_credentials=True,
     allow_methods=["*"],      # allow GET, POST, PUT, DELETE, etc.
     allow_headers=["*"],      # allow any HTTP headers
@@ -118,6 +128,31 @@ def get_all_products():
         call_procedure(cursor, "usp_GetAllProducts")
         products = rows_to_dicts(cursor)
     return products
+
+
+@app.post("/products", response_model=CreateProductResultSchema, status_code=201)
+def create_product(data: CreateProductSchema):
+    """Create a new product with name, description, image, and pricing."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        call_procedure(
+            cursor,
+            "usp_CreateProduct",
+            (
+                data.prodName,
+                data.prodDescription,
+                data.prodImage,
+                float(data.costPrice),
+                float(data.salePrice),
+                data.stockQuantity,
+            ),
+        )
+        result = rows_to_dicts(cursor)
+
+    if not result:
+        raise HTTPException(status_code=500, detail="Product creation failed")
+
+    return result[0]
 
 
 # ============================================================
@@ -420,6 +455,181 @@ def return_sale(invoice_id: int, data: ReturnSaleSchema):
         "itemsReturned": row.get("itemsReturned", 0),
         "unitsReturned": units,
     }
+
+
+# ============================================================
+# SUPPLIERS
+# ============================================================
+
+@app.get("/suppliers", response_model=list[SupplierSchema])
+def get_suppliers():
+    with get_db() as conn:
+        cursor = conn.cursor()
+        call_procedure(cursor, "usp_GetAllSuppliers")
+        suppliers = rows_to_dicts(cursor)
+        cursor.nextset()
+        product_links = rows_to_dicts(cursor)
+
+    by_supplier = {}
+    for link in product_links:
+        sid = link["supplierID"]
+        by_supplier.setdefault(sid, []).append({
+            "prodID": link["prodID"],
+            "prodName": link["prodName"],
+        })
+
+    for s in suppliers:
+        s["products"] = by_supplier.get(s["supplierID"], [])
+
+    return suppliers
+
+
+@app.post("/suppliers", status_code=201)
+def create_supplier(data: CreateSupplierSchema):
+    product_ids_json = json.dumps(data.productIDs) if data.productIDs else None
+    with get_db() as conn:
+        cursor = conn.cursor()
+        call_procedure(
+            cursor,
+            "usp_CreateSupplier",
+            (data.supplierName, data.companyName, data.phone, data.email, product_ids_json),
+        )
+        result = rows_to_dicts(cursor)
+
+    if not result:
+        raise HTTPException(status_code=500, detail="Supplier creation failed")
+
+    return {"supplierID": result[0]["supplierID"], "message": "Supplier created"}
+
+
+@app.put("/suppliers/{supplier_id}")
+def update_supplier(supplier_id: int, data: UpdateSupplierSchema):
+    product_ids_json = json.dumps(data.productIDs) if data.productIDs else None
+    with get_db() as conn:
+        cursor = conn.cursor()
+        call_procedure(
+            cursor,
+            "usp_UpdateSupplier",
+            (supplier_id, data.supplierName, data.companyName, data.phone, data.email, product_ids_json),
+        )
+        result = rows_to_dicts(cursor)
+
+    if not result:
+        raise HTTPException(status_code=500, detail="Supplier update failed")
+
+    return {"supplierID": result[0]["supplierID"], "message": "Supplier updated"}
+
+
+@app.delete("/suppliers/{supplier_id}")
+def delete_supplier(supplier_id: int):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        call_procedure(cursor, "usp_DeleteSupplier", (supplier_id,))
+        result = rows_to_dicts(cursor)
+
+    if not result:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+
+    return result[0]
+
+
+# ============================================================
+# SALES PERSONS
+# ============================================================
+
+@app.get("/sales-persons", response_model=list[SalesPersonSchema])
+def get_sales_persons():
+    with get_db() as conn:
+        cursor = conn.cursor()
+        call_procedure(cursor, "usp_GetAllSalesPersons")
+        return rows_to_dicts(cursor)
+
+
+@app.post("/sales-persons", response_model=SalesPersonSchema, status_code=201)
+def create_sales_person(data: CreateSalesPersonSchema):
+    salary = float(data.salary) if data.salary is not None else None
+    with get_db() as conn:
+        cursor = conn.cursor()
+        call_procedure(
+            cursor,
+            "usp_CreateSalesPerson",
+            (data.empName, data.empEmail, data.empPhone, salary),
+        )
+        result = rows_to_dicts(cursor)
+
+    if not result:
+        raise HTTPException(status_code=500, detail="Sales person creation failed")
+
+    return result[0]
+
+
+@app.delete("/sales-persons/{emp_id}")
+def delete_sales_person(emp_id: int):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        call_procedure(cursor, "usp_DeleteSalesPerson", (emp_id,))
+        result = rows_to_dicts(cursor)
+
+    if not result:
+        raise HTTPException(status_code=404, detail="Sales person not found")
+
+    return result[0]
+
+
+# ============================================================
+# GRN (Goods Receipt Notes)
+# ============================================================
+
+@app.get("/grn", response_model=list[GRNListItemSchema])
+def get_all_grns():
+    with get_db() as conn:
+        cursor = conn.cursor()
+        call_procedure(cursor, "usp_GetAllGRNs")
+        return rows_to_dicts(cursor)
+
+
+@app.get("/grn/{grn_id}", response_model=GRNDetailSchema)
+def get_grn_detail(grn_id: int):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        call_procedure(cursor, "usp_GetGRNDetail", (grn_id,))
+        headers = rows_to_dicts(cursor)
+        if not headers:
+            raise HTTPException(status_code=404, detail=f"GRN {grn_id} not found")
+        cursor.nextset()
+        lines = rows_to_dicts(cursor)
+
+    header = headers[0]
+    return {
+        **header,
+        "lines": lines,
+    }
+
+
+@app.post("/grn", status_code=201)
+def create_grn(data: CreateGRNSchema):
+    items_json = json.dumps([
+        {
+            "prodID": item.prodID,
+            "qty": item.qty,
+            "unitCost": float(item.unitCost) if item.unitCost is not None else None,
+        }
+        for item in data.items
+    ])
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        call_procedure(
+            cursor,
+            "usp_CreateGRN",
+            (data.supplierID, data.empID, data.notes, items_json),
+        )
+        result = rows_to_dicts(cursor)
+
+    if not result:
+        raise HTTPException(status_code=500, detail="GRN creation failed")
+
+    return {"grnID": result[0]["grnID"], "message": "GRN created and stock updated"}
 
 
 # ============================================================

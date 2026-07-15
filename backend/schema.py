@@ -99,13 +99,14 @@ class ProductListItemSchema(BaseModel):
 
 class InventoryProductSchema(BaseModel):
     """Product as shown on the inventory page (includes cost & margin)."""
-    prodID:        int
-    prodName:      str
-    prodImage:     Optional[str]
-    stockQuantity: int
-    costPrice:     Decimal
-    salePrice:     Decimal
-    marginPercent: Decimal
+    prodID:          int
+    prodName:        str
+    prodDescription: Optional[str] = None
+    prodImage:       Optional[str]
+    stockQuantity:   int
+    costPrice:       Decimal
+    salePrice:       Decimal
+    marginPercent:   Decimal
 
     class Config:
         from_attributes = True
@@ -217,4 +218,137 @@ class ReturnSaleResultSchema(BaseModel):
     message:       str
     itemsReturned: int
     unitsReturned: Optional[int] = None
+
+
+# ============================================================
+# PRODUCT CREATE
+# ============================================================
+
+class CreateProductSchema(BaseModel):
+    prodName:        str           = Field(..., min_length=1, max_length=200)
+    prodDescription: Optional[str] = Field(None, max_length=5000)
+    prodImage:       Optional[str] = None
+    costPrice:       Decimal       = Field(..., gt=0)
+    salePrice:       Decimal       = Field(..., gt=0)
+    stockQuantity:   int           = Field(0, ge=0)
+
+
+class CreateProductResultSchema(BaseModel):
+    prodID:          int
+    prodName:        str
+    prodDescription: Optional[str]
+    prodImage:       Optional[str]
+    costPrice:       Decimal
+    salePrice:       Decimal
+    stockQuantity:   int
+
+
+# ============================================================
+# SUPPLIERS
+# ============================================================
+
+class SupplierSchema(BaseModel):
+    supplierID:   int
+    supplierName: str
+    companyName:  str
+    phone:        Optional[str] = None
+    email:        Optional[str] = None
+    isActive:     Optional[bool] = True
+    createdAt:    Optional[datetime] = None
+    products:     list[dict] = []
+
+    class Config:
+        from_attributes = True
+
+
+class CreateSupplierSchema(BaseModel):
+    supplierName: str           = Field(..., min_length=1, max_length=100)
+    companyName:  str           = Field(..., min_length=1, max_length=200)
+    phone:        Optional[str] = Field(None, max_length=30)
+    email:        Optional[str] = Field(None, max_length=100)
+    productIDs:   list[int]     = Field(default_factory=list)
+
+
+class UpdateSupplierSchema(CreateSupplierSchema):
+    pass
+
+
+# ============================================================
+# SALES PERSONS
+# ============================================================
+
+class SalesPersonSchema(BaseModel):
+    empID:    int
+    empName:  str
+    empEmail: Optional[str] = None
+    empPhone: Optional[str] = None
+    hireDate: Optional[datetime] = None
+    salary:   Optional[Decimal] = None
+    isActive: Optional[bool] = True
+
+    class Config:
+        from_attributes = True
+
+
+class CreateSalesPersonSchema(BaseModel):
+    empName:  str           = Field(..., min_length=1, max_length=100)
+    empEmail: Optional[str] = Field(None, max_length=100)
+    empPhone: Optional[str] = Field(None, max_length=30)
+    salary:   Optional[Decimal] = Field(None, ge=0)
+
+
+# ============================================================
+# GRN (Goods Receipt Note)
+# ============================================================
+
+class GRNItemSchema(BaseModel):
+    prodID:   int     = Field(..., gt=0)
+    qty:      int     = Field(..., gt=0)
+    unitCost: Optional[Decimal] = Field(None, ge=0)
+
+
+class CreateGRNSchema(BaseModel):
+    supplierID: int                  = Field(..., gt=0)
+    empID:      int                  = Field(..., gt=0)
+    notes:      Optional[str]        = Field(None, max_length=500)
+    items:      list[GRNItemSchema]  = Field(..., min_length=1)
+
+
+class GRNListItemSchema(BaseModel):
+    grnID:        int
+    receivedDate: datetime
+    notes:        Optional[str]
+    supplierID:   int
+    supplierName: str
+    companyName:  str
+    empID:        int
+    empName:      str
+    totalUnits:   Optional[int] = None
+    lineCount:    Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+
+class GRNLineSchema(BaseModel):
+    grnDetailID:      int
+    prodID:           int
+    prodName:         str
+    quantityReceived: int
+    unitCost:         Optional[Decimal] = None
+
+    class Config:
+        from_attributes = True
+
+
+class GRNDetailSchema(BaseModel):
+    grnID:        int
+    receivedDate: datetime
+    notes:        Optional[str]
+    supplierID:   int
+    supplierName: str
+    companyName:  str
+    empID:        int
+    empName:      str
+    lines:        list[GRNLineSchema]
 

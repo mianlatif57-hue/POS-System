@@ -105,14 +105,14 @@ function AdjustModal({ product, onClose, onSaved }) {
             style={{ flex: 1 }}
             onClick={() => setType('add')}
           >
-            ➕ Add Stock
+             Add Stock
           </button>
           <button
             className={`btn ${type === 'remove' ? 'btn-danger' : 'btn-ghost'}`}
             style={{ flex: 1 }}
             onClick={() => setType('remove')}
           >
-            ➖ Remove Stock
+             Remove Stock
           </button>
         </div>
 
@@ -263,7 +263,7 @@ function ProductDetailModal({ prodID, onClose, onStockChanged }) {
                 style={{ marginBottom: 20 }}
                 onClick={() => setShowAdjust(true)}
               >
-                📦 Adjust Stock
+                Adjust Stock
               </button>
 
               {/* Inventory history */}
@@ -373,7 +373,7 @@ export default function Inventory() {
       {/* Search bar */}
       <input
         className="input"
-        placeholder="🔍 Search products..."
+        placeholder=" Search products..."
         value={search}
         onChange={e => setSearch(e.target.value)}
         style={{ marginBottom: 16, maxWidth: 360 }}
